@@ -1,11 +1,11 @@
-import { execSync } from "child_process";
 import { printBlue, printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
+import { hasSecretWriteToken, setRepoSecret } from "./utils/githubSecrets.js";
+import { sanitizeForLog, summarizeResponse } from "./utils/safeLog.js";
 import { close_api, delay, send, startService } from "./utils/utils.js";
 
 async function main() {
 
   const USERINFO = process.env.USERINFO
-  const PAT = process.env.PAT
   // 刷新token
   const refreshUserinfo = []
   let needRefresh = false
@@ -38,7 +38,7 @@ async function main() {
         printRed(`token过期或账号不存在, userid: ${user.userid}`)
         errorMsg[user.userid] = {
           msg: `token过期或账号不存在, userid: ${user.userid}`,
-          data: userDetail
+          data: summarizeResponse(userDetail)
         }
         continue
       }
@@ -67,7 +67,7 @@ async function main() {
       } else if (listen.error_code === 130012) {
         printGreen("今日已领取")
       } else {
-        errorMsg[userDetail?.data?.nickname + " listen"] = listen
+        errorMsg[userDetail?.data?.nickname + " listen"] = summarizeResponse(listen)
         printRed("听歌领取失败")
       }
 
@@ -88,7 +88,7 @@ async function main() {
         } else {
           printRed(`第${i}次领取失败`)
           // console.dir(ad, { depth: null })
-          errorMsg[userDetail?.data?.nickname + " ad"] = ad
+          errorMsg[userDetail?.data?.nickname + " ad"] = summarizeResponse(ad)
           break
         }
       }
@@ -99,7 +99,7 @@ async function main() {
         printBlue(`VIP到期时间：${vip_details.data.busi_vip[0].vip_end_time}\n`)
       } else {
         printRed("获取失败\n")
-        errorMsg[userDetail?.data?.nickname + " vip_details"] = vip_details
+        errorMsg[userDetail?.data?.nickname + " vip_details"] = summarizeResponse(vip_details)
       }
     }
 
@@ -110,15 +110,15 @@ async function main() {
   // 更新secret <USERINFO>
   if (refreshUserinfo.length > 0 && needRefresh) {
 
-    if (PAT) {
+    if (hasSecretWriteToken()) {
       const userinfoJSON = JSON.stringify(refreshUserinfo)
       try {
-        // printGreen(userinfoJSON)
-        execSync(`gh secret set USERINFO -b'${userinfoJSON}' --repo ${process.env.GITHUB_REPOSITORY}`);
+        setRepoSecret("USERINFO", userinfoJSON)
         printGreen("secret <USERINFO> token刷新成功")
       } catch (error) {
         printRed("token刷新失败")
-        throw error
+        console.dir(sanitizeForLog({ message: error.message }), { depth: null })
+        throw new Error("secret <USERINFO> token刷新失败")
       }
     } else {
       printYellow("存在账号需要刷新token，但是未配置PAT，未刷新token最多两个月后过期")
@@ -128,7 +128,7 @@ async function main() {
 
   if (Object.keys(errorMsg).length > 0) {
     printRed("异常信息如下:")
-    console.dir(errorMsg, { depth: null })
+    console.dir(sanitizeForLog(errorMsg), { depth: null })
     throw new Error("领取异常")
   }
 

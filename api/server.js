@@ -208,7 +208,7 @@ async function consturctServer(moduleDefs) {
  */
 async function startService() {
   const port = Number(process.env.PORT || '3000');
-  const host = process.env.HOST || '';
+  const host = process.env.HOST || '127.0.0.1';
 
   const app = await consturctServer();
 

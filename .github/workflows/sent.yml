@@ -4,6 +4,8 @@ on:
   # push:
   # schedule:
   #   - cron: 1 16 * * *
+permissions:
+  contents: read
 jobs:
   run:
     runs-on: ubuntu-latest
