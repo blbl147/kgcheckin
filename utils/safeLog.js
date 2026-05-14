@@ -9,21 +9,84 @@ const SENSITIVE_KEYS = new Set([
   "userinfo",
   "password",
   "code",
+  "mobile",
+  "phone",
+  "qrcode",
+  "qrcode_img",
+  "qrcode_txt",
+  "qrimg",
+  "key",
 ]);
 
+const DISPLAY_NAME_KEYS = new Set(["nickname", "username", "display_name", "displayname"]);
+const IDENTIFIER_KEYS = new Set(["userid", "user_id", "uid", "kguid", "kugouid", "t_userid"]);
+
+function normalizeKey(key) {
+  return String(key).toLowerCase();
+}
+
+function sanitizeString(value) {
+  return value
+    .replace(/(github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]{20,})/g, "[REDACTED]")
+    .replace(/(?<!\d)(1[3-9]\d{9})(?!\d)/g, (phone) => `${phone.slice(0, 2)}*******${phone.slice(-2)}`);
+}
+
+function maskDisplayName(value) {
+  const text = String(value ?? "");
+  const chars = Array.from(text);
+
+  if (chars.length === 0) {
+    return "";
+  }
+  if (chars.length === 1) {
+    return `${chars[0]}********`;
+  }
+  if (chars.length === 2) {
+    return `${chars[0]}********${chars[1]}`;
+  }
+  return `${chars.slice(0, 2).join("")}********${chars[chars.length - 1]}`;
+}
+
+function maskIdentifier(value) {
+  const text = String(value ?? "");
+  const chars = Array.from(text);
+
+  if (chars.length === 0) {
+    return "";
+  }
+  if (chars.length <= 2) {
+    return "*".repeat(chars.length);
+  }
+  if (chars.length <= 6) {
+    return `${chars[0]}***${chars[chars.length - 1]}`;
+  }
+  return `${chars.slice(0, 3).join("")}***${chars.slice(-2).join("")}`;
+}
+
 function redactValue(key, value) {
-  if (SENSITIVE_KEYS.has(String(key).toLowerCase())) {
+  const normalizedKey = normalizeKey(key);
+
+  if (DISPLAY_NAME_KEYS.has(normalizedKey)) {
+    return maskDisplayName(value);
+  }
+  if (IDENTIFIER_KEYS.has(normalizedKey)) {
+    return maskIdentifier(value);
+  }
+  if (SENSITIVE_KEYS.has(normalizedKey)) {
     return "[REDACTED]";
   }
   if (typeof value === "string") {
-    return value.replace(/(github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]{20,})/g, "[REDACTED]");
+    return sanitizeString(value);
   }
   return value;
 }
 
 function sanitizeForLog(value, depth = 0) {
-  if (value == null || typeof value !== "object") {
+  if (value == null) {
     return value;
+  }
+  if (typeof value !== "object") {
+    return typeof value === "string" ? sanitizeString(value) : value;
   }
   if (depth >= 4) {
     return "[Object]";
@@ -66,4 +129,4 @@ function shouldPrintSensitiveValue() {
   return ["是", "true", "1", "yes"].includes(String(process.env.ALLOW_PRINT_USERINFO || "").toLowerCase());
 }
 
-export { sanitizeForLog, shouldPrintSensitiveValue, summarizeResponse };
+export { maskDisplayName, maskIdentifier, sanitizeForLog, shouldPrintSensitiveValue, summarizeResponse };

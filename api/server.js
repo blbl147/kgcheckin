@@ -7,6 +7,112 @@ const { createRequest } = require('./util/request');
 const dotenv = require('dotenv');
 const cache = require('./util/apicache').middleware;
 
+const SENSITIVE_QUERY_KEYS = new Set([
+  'token',
+  'vip_token',
+  'viptoken',
+  'cookie',
+  'authorization',
+  'code',
+  'mobile',
+  'phone',
+  'qrcode',
+  'qrcode_img',
+  'qrcode_txt',
+  'qrimg',
+  'key',
+  'p',
+  'p2',
+  'p3',
+  'params',
+]);
+
+const IDENTIFIER_QUERY_KEYS = new Set(['userid', 'user_id', 'uid', 'kguid', 'kugouid', 't_userid']);
+const DISPLAY_NAME_KEYS = new Set(['nickname', 'username', 'display_name', 'displayname']);
+const SENSITIVE_BODY_KEYS = new Set([
+  ...SENSITIVE_QUERY_KEYS,
+  'pat',
+  'gh_token',
+  'userinfo',
+  'password',
+]);
+
+function maskIdentifierForLog(value) {
+  const chars = Array.from(String(value ?? ''));
+
+  if (chars.length === 0) return '';
+  if (chars.length <= 2) return '*'.repeat(chars.length);
+  if (chars.length <= 6) return `${chars[0]}***${chars[chars.length - 1]}`;
+  return `${chars.slice(0, 3).join('')}***${chars.slice(-2).join('')}`;
+}
+
+function sanitizeUrlForLog(rawUrl) {
+  const decodedUrl = decode(rawUrl || '');
+  const queryStart = decodedUrl.indexOf('?');
+
+  if (queryStart === -1) {
+    return decodedUrl;
+  }
+
+  const pathName = decodedUrl.slice(0, queryStart);
+  const queryString = decodedUrl.slice(queryStart + 1);
+
+  const params = new URLSearchParams(queryString);
+  for (const key of Array.from(params.keys())) {
+    const normalizedKey = key.toLowerCase();
+    if (IDENTIFIER_QUERY_KEYS.has(normalizedKey)) {
+      params.set(key, maskIdentifierForLog(params.get(key)));
+    } else if (SENSITIVE_QUERY_KEYS.has(normalizedKey)) {
+      params.set(key, '[REDACTED]');
+    }
+  }
+
+  const sanitizedQuery = params.toString().replace(/%5BREDACTED%5D/g, '[REDACTED]');
+  return sanitizedQuery ? `${pathName}?${sanitizedQuery}` : pathName;
+}
+
+function maskDisplayNameForLog(value) {
+  const chars = Array.from(String(value ?? ''));
+
+  if (chars.length === 0) return '';
+  if (chars.length === 1) return `${chars[0]}********`;
+  if (chars.length === 2) return `${chars[0]}********${chars[1]}`;
+  return `${chars.slice(0, 2).join('')}********${chars[chars.length - 1]}`;
+}
+
+function sanitizeStringForLog(value) {
+  return String(value)
+    .replace(/(github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9]{20,})/g, '[REDACTED]')
+    .replace(/(?<!\d)(1[3-9]\d{9})(?!\d)/g, (phone) => `${phone.slice(0, 2)}*******${phone.slice(-2)}`);
+}
+
+function sanitizeBodyForLog(value, depth = 0) {
+  if (value == null) return value;
+  if (typeof value !== 'object') {
+    return typeof value === 'string' ? sanitizeStringForLog(value) : value;
+  }
+  if (depth >= 4) return '[Object]';
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => sanitizeBodyForLog(item, depth + 1));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      const normalizedKey = key.toLowerCase();
+      if (DISPLAY_NAME_KEYS.has(normalizedKey)) {
+        return [key, maskDisplayNameForLog(item)];
+      }
+      if (IDENTIFIER_QUERY_KEYS.has(normalizedKey)) {
+        return [key, maskIdentifierForLog(item)];
+      }
+      if (SENSITIVE_BODY_KEYS.has(normalizedKey)) {
+        return [key, '[REDACTED]'];
+      }
+      return [key, sanitizeBodyForLog(item, depth + 1)];
+    })
+  );
+}
+
 /**
  * @typedef {{
  * identifier?: string,
@@ -153,7 +259,7 @@ async function consturctServer(moduleDefs) {
           return createRequest(config);
         });
 
-        console.log('[OK]', decode(req.originalUrl));
+        console.log('[OK]', sanitizeUrlForLog(req.originalUrl));
 
         const cookies = moduleResponse.cookie;
         if (!query.noCookie) {
@@ -180,9 +286,9 @@ async function consturctServer(moduleDefs) {
         res.header(moduleResponse.headers).status(moduleResponse.status).send(moduleResponse.body);
       } catch (e) {
         const moduleResponse = e;
-        console.log('[ERR]', decode(req.originalUrl), {
+        console.log('[ERR]', sanitizeUrlForLog(req.originalUrl), {
           status: moduleResponse.status,
-          body: moduleResponse.body,
+          body: sanitizeBodyForLog(moduleResponse.body),
         });
 
         if (!moduleResponse.body) {

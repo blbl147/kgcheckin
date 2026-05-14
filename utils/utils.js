@@ -33,7 +33,7 @@ function close_api(api) {
 
 // 发送请求
 async function send(path, method, headers) {
-  const result = await fetch("http://localhost:3000" + path, {
+  const result = await fetch("http://127.0.0.1:3000" + path, {
     method: method,
     headers: headers
   }).then(r => r.json())

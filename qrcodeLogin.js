@@ -1,7 +1,7 @@
 import { close_api, delay, send, startService } from "./utils/utils.js";
 import { printBlue, printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
 import { hasSecretWriteToken, setRepoSecret } from "./utils/githubSecrets.js";
-import { sanitizeForLog, shouldPrintSensitiveValue, summarizeResponse } from "./utils/safeLog.js";
+import { maskIdentifier, sanitizeForLog, shouldPrintSensitiveValue, summarizeResponse } from "./utils/safeLog.js";
 
 async function qrcode() {
 
@@ -57,7 +57,7 @@ async function qrcode() {
 
                 if (userinfo[i].userid == res.data.userid) {
                   userAlreadyExist = true
-                  printYellow(`userid: ${userinfo[i].userid} 此账号已存在, 仅更新登录信息`)
+                  printYellow(`userid: ${maskIdentifier(userinfo[i].userid)} 此账号已存在, 仅更新登录信息`)
                   userinfo[i].token = res.data.token
                 }
               }

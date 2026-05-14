@@ -1,6 +1,6 @@
 import { printBlue, printGreen, printRed, printYellow } from "./utils/colorOut.js";
 import { hasSecretWriteToken, setRepoSecret } from "./utils/githubSecrets.js";
-import { sanitizeForLog, shouldPrintSensitiveValue, summarizeResponse } from "./utils/safeLog.js";
+import { maskIdentifier, sanitizeForLog, shouldPrintSensitiveValue, summarizeResponse } from "./utils/safeLog.js";
 import { close_api, delay, send, startService } from "./utils/utils.js";
 
 async function login() {
@@ -31,7 +31,7 @@ async function login() {
 
           if (userinfo[i].userid == result.data.userid) {
             userAlreadyExist = true
-            printYellow(`userid: ${userinfo[i].userid} 此账号已存在, 仅更新登录信息`)
+            printYellow(`userid: ${maskIdentifier(userinfo[i].userid)} 此账号已存在, 仅更新登录信息`)
             userinfo[i].token = result.data.token
           }
         }
