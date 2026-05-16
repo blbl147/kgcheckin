@@ -44,8 +44,12 @@ module.exports = (params, useAxios) => {
 
       resolve(respone);
     } catch (error) {
-      console.log(error);
-      answer.body = error;
+      answer.body = {
+        message: error?.message || String(error),
+        status: error?.status,
+        code: error?.code,
+      };
+      console.log(answer.body);
       resolve(answer);
     }
   });

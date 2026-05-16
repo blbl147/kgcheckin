@@ -1,4 +1,5 @@
 import { close_api, delay, send, startService } from "./utils/utils.js";
+import { summarizeResponse } from "./utils/safeLog.js";
 
 async function login() {
 
@@ -19,7 +20,7 @@ async function login() {
       console.log("发送成功")
     } else {
       console.log("响应内容")
-      console.dir(result, { depth: null })
+      console.dir(summarizeResponse(result), { depth: null })
       throw new Error("发送失败！请检查")
     }
   } finally {

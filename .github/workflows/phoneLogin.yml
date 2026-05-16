@@ -10,6 +10,16 @@ on:
         options:
           - 是
           - 否
+      print_userinfo:
+        description: "自动写入失败时是否在日志输出 USERINFO？含登录token，默认否"
+        required: true
+        default: "否"
+        type: choice
+        options:
+          - 否
+          - 是
+permissions:
+  contents: read
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -23,20 +33,16 @@ jobs:
           node-version: 24
           cache: 'npm'
           cache-dependency-path: ./api/package-lock.json
-      - name: 🔧 安装GitHub CLI，并使用PAT登录
-        env:
-          PAT: ${{ secrets.PAT }}
+      - name: 🔧 检查GitHub CLI
         run: |
-          if [ -n "${PAT}" ]; then
+          if ! command -v gh >/dev/null 2>&1; then
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
             sudo apt update
             sudo apt install gh -y
-            gh --version
-            echo "${{ secrets.PAT }}" | gh auth login --with-token
-            gh auth status
           fi
+          gh --version
       - name: Cache node_modules in api directory
         id: cache-npm
         uses: actions/cache@v5
@@ -57,3 +63,4 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           USERINFO: ${{ secrets.USERINFO }}
           APPEND_USER: ${{ github.event.inputs.append_user }}
+          ALLOW_PRINT_USERINFO: ${{ github.event.inputs.print_userinfo }}

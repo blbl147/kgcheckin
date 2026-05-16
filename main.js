@@ -1,11 +1,11 @@
-import { execSync } from "child_process";
 import { printBlue, printGreen, printMagenta, printRed, printYellow } from "./utils/colorOut.js";
+import { hasSecretWriteToken, setRepoSecret } from "./utils/githubSecrets.js";
+import { maskDisplayName, maskIdentifier, sanitizeForLog, summarizeResponse } from "./utils/safeLog.js";
 import { close_api, delay, send, startService } from "./utils/utils.js";
 
 async function main() {
 
   const USERINFO = process.env.USERINFO
-  const PAT = process.env.PAT
   // 刷新token
   const refreshUserinfo = []
   let needRefresh = false
@@ -35,14 +35,16 @@ async function main() {
       // console.log(headers)
       const userDetail = await send(`/user/detail?timestrap=${Date.now()}`, "GET", headers)
       if (userDetail?.data?.nickname == null) {
-        printRed(`token过期或账号不存在, userid: ${user.userid}`)
-        errorMsg[user.userid] = {
-          msg: `token过期或账号不存在, userid: ${user.userid}`,
-          data: userDetail
+        const safeUserId = maskIdentifier(user.userid)
+        printRed(`token过期或账号不存在, userid: ${safeUserId}`)
+        errorMsg[safeUserId] = {
+          msg: `token过期或账号不存在, userid: ${safeUserId}`,
+          data: summarizeResponse(userDetail)
         }
         continue
       }
-      printMagenta(`账号 ${userDetail?.data?.nickname} 开始领取VIP...`)
+      const safeNickname = maskDisplayName(userDetail.data.nickname)
+      printMagenta(`账号 ${safeNickname} 开始领取VIP...`)
 
       // 周日刷新token
       if (today.getDay() == 0) {
@@ -50,7 +52,7 @@ async function main() {
         if (refreshToken?.status == 1) {
           if (refreshToken?.data?.token !== user.token) {
             needRefresh = true
-            printYellow(`账号 ${userDetail?.data?.nickname} 需要刷新token`)
+            printYellow(`账号 ${safeNickname} 需要刷新token`)
             user.token = refreshToken.data.token
           }
         }
@@ -67,7 +69,7 @@ async function main() {
       } else if (listen.error_code === 130012) {
         printGreen("今日已领取")
       } else {
-        errorMsg[userDetail?.data?.nickname + " listen"] = listen
+        errorMsg[`${safeNickname} listen`] = summarizeResponse(listen)
         printRed("听歌领取失败")
       }
 
@@ -76,7 +78,7 @@ async function main() {
         // ad获取vip
         const ad = await send(`/youth/vip?timestrap=${Date.now()}`, "GET", headers)
         // 签到出现问题
-        // errorMsg[`${userDetail?.data?.nickname} ad${i}`] = ad
+        // errorMsg[`${safeNickname} ad${i}`] = summarizeResponse(ad)
         if (ad.status === 1) {
           printGreen(`第${i}次领取成功`)
           if (i != 8) {
@@ -88,7 +90,7 @@ async function main() {
         } else {
           printRed(`第${i}次领取失败`)
           // console.dir(ad, { depth: null })
-          errorMsg[userDetail?.data?.nickname + " ad"] = ad
+          errorMsg[`${safeNickname} ad`] = summarizeResponse(ad)
           break
         }
       }
@@ -99,7 +101,7 @@ async function main() {
         printBlue(`VIP到期时间：${vip_details.data.busi_vip[0].vip_end_time}\n`)
       } else {
         printRed("获取失败\n")
-        errorMsg[userDetail?.data?.nickname + " vip_details"] = vip_details
+        errorMsg[`${safeNickname} vip_details`] = summarizeResponse(vip_details)
       }
     }
 
@@ -110,15 +112,15 @@ async function main() {
   // 更新secret <USERINFO>
   if (refreshUserinfo.length > 0 && needRefresh) {
 
-    if (PAT) {
+    if (hasSecretWriteToken()) {
       const userinfoJSON = JSON.stringify(refreshUserinfo)
       try {
-        // printGreen(userinfoJSON)
-        execSync(`gh secret set USERINFO -b'${userinfoJSON}' --repo ${process.env.GITHUB_REPOSITORY}`);
+        setRepoSecret("USERINFO", userinfoJSON)
         printGreen("secret <USERINFO> token刷新成功")
       } catch (error) {
         printRed("token刷新失败")
-        throw error
+        console.dir(sanitizeForLog({ message: error.message }), { depth: null })
+        throw new Error("secret <USERINFO> token刷新失败")
       }
     } else {
       printYellow("存在账号需要刷新token，但是未配置PAT，未刷新token最多两个月后过期")
@@ -128,7 +130,7 @@ async function main() {
 
   if (Object.keys(errorMsg).length > 0) {
     printRed("异常信息如下:")
-    console.dir(errorMsg, { depth: null })
+    console.dir(sanitizeForLog(errorMsg), { depth: null })
     throw new Error("领取异常")
   }
 
